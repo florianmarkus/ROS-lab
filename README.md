@@ -1,0 +1,1 @@
+This repository contains the code for the robot lab of the "Embedded Systems" course. Arduino files can be found in the Arduino folder, while packages can be found in their respective folders in the root of this project.
