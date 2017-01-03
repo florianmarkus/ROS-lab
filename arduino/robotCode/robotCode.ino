@@ -11,6 +11,8 @@ float robotSpeed = 0;
 float correction = 0;
 // also initialize the soft limit that will be used for object stopping and robot following
 float speedLimit = MAXSPEED;
+// also initialize a last updated long
+unsigned long lastUpdated = 0;
 
 class NewHardware: public ArduinoHardware {
   public: NewHardware():ArduinoHardware(&Serial1, 57600){};
@@ -18,7 +20,7 @@ class NewHardware: public ArduinoHardware {
 
 ros::NodeHandle_<NewHardware> nh;
 
-/*
+/* uncomment to go back to cable instead of bluetooth
 // create a nodehandle
 ros::NodeHandle nh;
 */
@@ -30,8 +32,7 @@ Timer t;
 int rupsFwdR = 2;
 int rupsFwdL = 6;
 int rupsRevR = 3;
-int rupsRevL = 7
-;
+int rupsRevL = 7;
 int rupsEnR = 24;
 int rupsEnL = 25;
 
@@ -97,37 +98,39 @@ void updateDrive(){
     analogWrite(rupsRevL, round(-leftTrackSpeed / MAXSPEED * 255));
     analogWrite(rupsFwdL, 0);
   }
-  Serial.println("Track speed updated");
-  Serial.print("New right track speed: ");
-  Serial.println(rightTrackSpeed);
-  Serial.print("New left track speed: ");
-  Serial.println(leftTrackSpeed);
 }
 
 // function that updates the soft speed limit from the depth sensor
 void updateSpeedLimit(){
-  // initiate the ultrasonic sensor
-  digitalWrite(ultrasonicTrigger, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(ultrasonicTrigger, LOW);
+  // calculate time since last update
+  unsigned long timeSinceLastUpdate = millis() - lastUpdated;
   
-  // read the result pulse
-  unsigned int pulseLength = pulseIn(ultrasonicResponse, HIGH);
-  
-  // calculate the distance
-  float distance = pulseLength / 58;
-  
-  // linearly decrease the soft speed limit from maxspeed to zero between 30 and 20 cms
-  if (distance < 20){
+  // if the last update is less than 1.5 seconds in the past, update according to ultrasonic sensor
+  if (timeSinceLastUpdate < 1500){
+    // initiate the ultrasonic sensor
+    digitalWrite(ultrasonicTrigger, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(ultrasonicTrigger, LOW);
+
+    // read the result pulse
+    unsigned int pulseLength = pulseIn(ultrasonicResponse, HIGH);
+
+    // calculate the distance
+    float distance = pulseLength / 58;
+
+    // linearly decrease the soft speed limit from maxspeed to zero between 30 and 20 cms
+    if (distance < 20){
       speedLimit = 0;
-  } else if (distance > 30){
+    } else if (distance > 30){
       speedLimit = MAXSPEED;
-  } else{
+    } else{
       speedLimit = (distance - 20) / 10 * MAXSPEED;
+    }
   }
-  Serial.println("Speed limit updated");
-  Serial.print("New speed limit: ");
-  Serial.println(speedLimit);
+  // if the last update was long ago, set speedlimit to 0 automatically
+  else{
+    speedLimit = 0;
+  }
 }
 
 // callback that handles the twist message
@@ -137,8 +140,9 @@ void driveCallback(const geometry_msgs::Twist& msg){
   // make sure that the input does not exceed the maximum spec
   robotSpeed = constrain(msg.linear.x, -MAXSPEED, MAXSPEED);
   correction = constrain(msg.angular.z, -MAXSPEED/TANKRADIUS, MAXSPEED/TANKRADIUS);
-  
-  Serial.println("Command received");
+
+  // update the last updated time
+  lastUpdated = millis();
   
   // call updateDrive for minimum latency
   updateDrive();
@@ -165,9 +169,8 @@ void setup(){
   nh.spinOnce();
   
   // set up the timer that contiuously updates the speed limit and driving speed
-  t.every(1000, updateSpeedLimit);
-  t.every(1000, updateDrive);
-  Serial.println("Setup completed");
+  t.every(400, updateSpeedLimit);
+  t.every(100, updateDrive);
 }
 
 void loop(){
