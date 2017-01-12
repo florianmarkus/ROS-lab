@@ -37,6 +37,13 @@ public:
         
         // scale the image
         cv::resize(srcImgPtr->image, srcImgPtr->image, cv::Size(), 1.0/scaleFactor, 1.0/scaleFactor, CV_INTER_LINEAR);
+
+            try{
+                srcImgPtr->image = cv::Mat(srcImgPtr->image, cv::Rect(296, 0, 296 , 1080 / scaleFactor));
+            } catch (cv::Exception& e){
+                ROS_ERROR("%s: %s", e.err.c_str(), e.msg.c_str());
+                return;
+            }
         
         // blur the image slightly to level the noise and smoothen the edges
         cv::Mat blurred;
@@ -64,7 +71,7 @@ public:
                 // threshold the image to binary on the mean
                 cv::threshold(bgr[i], binaryBgr[i], (placeholderMean.val[0] + mean)/3, 255, 0);
                 // if more than 50% of the image is white, invert
-                if (cv::countNonZero(binaryBgr[i]) > (1920 * 1080 / scaleFactor / scaleFactor / 2)){
+                if (cv::countNonZero(binaryBgr[i]) > (1920 * 1080 / scaleFactor / scaleFactor / 4)){
                     cv::bitwise_not(binaryBgr[i], binaryBgr[i]);
                 }
             } else{
@@ -79,7 +86,7 @@ public:
         
         // create a vector of detection points
         int noOfRefPoints = 3;
-        int refPoints[] = {200, 110, 320};
+        int refPoints[] = {352, 462, 572};
         double meanBrights[noOfRefPoints];
         int noOfLineDetected = 0;
         // get the average y for all the reference points
@@ -87,7 +94,7 @@ public:
             // create a cutout of the image near the start and initilize an empty array of locations
             cv::Mat cutout;
             try{
-                cutout = cv::Mat(res, cv::Rect(refPoints[j], 0, 10, 1080 / scaleFactor));
+                cutout = cv::Mat(res, cv::Rect(refPoints[j] - 296 , 0, 10, 1080 / scaleFactor));
             } catch (cv::Exception& e){
                 ROS_ERROR("%s: %s", e.err.c_str(), e.msg.c_str());
                 return;
@@ -115,7 +122,7 @@ public:
                 }
                 y /= locations.size();
                 // draw a circle on the detected mean
-                cv::circle(srcImgPtr->image, cv::Point(refPoints[j]+10, y), 5, cv::Scalar(0, 255, 0), 2, 8);
+                cv::circle(srcImgPtr->image, cv::Point(refPoints[j]+10-296, y), 5, cv::Scalar(0, 255, 0), 2, 8);
                 // store the mean in the appropriate vector
                 meanBrights[j] = y;
             }
@@ -142,10 +149,20 @@ public:
 		ros::Publisher pub;
 		pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
 		geometry_msgs::Twist base_cmd; 
-		//static int g = 0;
-		//g++; 
-		base_cmd.linear.x = meanBright;
-		base_cmd.angular.x = meanBright;
+
+		
+
+		if(meanBright == -1){
+			base_cmd.linear.x = 0;
+			base_cmd.angular.z = 0;
+		} else {
+		base_cmd.linear.x = 0.10;
+		base_cmd.angular.z = (meanBright - 180) / 180;
+		}
+
+		//base_cmd.linear.x = 0.15;
+		
+
 		pub.publish(base_cmd);
         
         
